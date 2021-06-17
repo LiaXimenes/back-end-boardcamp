@@ -19,33 +19,63 @@ server.get("/categories", async (req, res) =>{
    try{
         const categories =  await connection.query('SELECT * FROM categories');
         res.send(categories.rows);
-
     } catch(err){
         console.log(err);
     }
-
-
 })
+
 server.post("/categories", async (req, res) =>{
+    const name = req.body.name
     try{
-        await connection.query('INSERT INTO categories (name) VALUES ($1)', [req.body.name]);
-        console.log(categories);
+        const isNameUsed = await connection.query('SELECT name FROM categories WHERE name = $1', [name]);
+        if(isNameUsed.rows.length !== 0){
+            return res.sendStatus(409);
+        }
+
+        if(name === ""){
+            return res.sendStatus(400);
+        } 
+
+        await connection.query('INSERT INTO categories (name) VALUES ($1)', [name]);
+        res.sendStatus(201);
+
     } catch(err){
         console.log(err);
     }
-
 })
 
-server.get("/", async (req, res) =>{
-
+server.get("/games", async (req, res) =>{
+    try{
+        const games =  await connection.query('SELECT * FROM games');
+        res.send(games.rows);
+    } catch(err){
+        console.log(err);
+    }
 })
+server.post("/games", async (req, res) =>{
+    const {name, image, stockTotal, categoryId, pricePerDay} = req.body;
+   
+    try{
+        const isNameUsed = await connection.query('SELECT name FROM games WHERE name = $1', [name]);
+        if(isNameUsed.rows.length !== 0){
+            return res.sendStatus(409);
+        }
 
-server.get("/", async (req, res) =>{
+        if(name === "" || stockTotal < 1 || pricePerDay < 1){
+            return res.sendStatus(400);
+        }
 
-})
+        const isCategoryExistent = await connection.query('SELECT id FROM categories WHERE id = $1', [categoryId]);
+        if(isCategoryExistent.rows.length === 0){
+            return res.sendStatus(400);
+        }
 
-server.get("/", async (req, res) =>{
+        await connection.query('INSERT INTO games (name, image, "stockTotal", "categoryId", "pricePerDay") VALUES ($1, $2, $3, $4, $5)', [name, image, stockTotal, categoryId, pricePerDay]);
+        res.sendStatus(201);
 
+    } catch(err){
+        console.log(err);
+    }
 })
 
 
