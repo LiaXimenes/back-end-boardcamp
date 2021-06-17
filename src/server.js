@@ -45,6 +45,9 @@ server.post("/categories", async (req, res) =>{
 })
 
 server.get("/games", async (req, res) =>{
+
+    //  FAZER ROLE DE PARAMETRO NA QUERY STRING
+
     try{
         const games =  await connection.query('SELECT * FROM games');
         res.send(games.rows);
@@ -52,6 +55,7 @@ server.get("/games", async (req, res) =>{
         console.log(err);
     }
 })
+
 server.post("/games", async (req, res) =>{
     const {name, image, stockTotal, categoryId, pricePerDay} = req.body;
    
@@ -71,6 +75,90 @@ server.post("/games", async (req, res) =>{
         }
 
         await connection.query('INSERT INTO games (name, image, "stockTotal", "categoryId", "pricePerDay") VALUES ($1, $2, $3, $4, $5)', [name, image, stockTotal, categoryId, pricePerDay]);
+        res.sendStatus(201);
+
+    } catch(err){
+        console.log(err);
+    }
+})
+
+server.get("/customers", async (req, res) =>{
+    //  FAZER ROLE DE PARAMETRO NA QUERY STRING
+
+    try{
+        const customers =  await connection.query('SELECT * FROM customers');
+        res.send(customers.rows);
+    } catch(err){
+        console.log(err);
+    }
+})
+
+server.get("/customers/:id", async (req, res) =>{
+    const id = req.params.id;
+
+    try{
+        const customers =  await connection.query('SELECT * FROM customers WHERE id = $1' ,[id]);
+        if(customers.rows.length === 0){
+            res.sendStatus(404)
+        } else {
+            res.send(customers.rows);
+        }
+    } catch(err){
+        console.log(err);
+    }
+})
+
+server.post("/customers", async (req, res) =>{
+    const name = req.body.name;
+    const phone = parseInt(req.body.phone);
+    const cpf = parseInt(req.body.cpf);
+    const birthday = req.body.birthday;
+
+
+    try{
+        const isCpfUsed = await connection.query('SELECT cpf FROM customers WHERE cpf = $1', [cpf]);
+        if(isCpfUsed.rows.length !== 0){
+            return res.sendStatus(409);
+        }
+
+        if(name === ""){
+            return res.sendStatus(400);
+        }
+
+        // `cpf` deve ser uma string com 11 caracteres numéricos;
+        // `phone` deve ser uma string com 10 ou 11 caracteres numéricos; 
+        // `birthday` deve ser uma data válida;
+
+        await connection.query('INSERT INTO customers (name, phone, cpf, birthday) VALUES ($1, $2, $3, $4)', [name, phone, cpf, birthday]);
+        res.sendStatus(201);
+
+    } catch(err){
+        console.log(err);
+    }
+})
+
+server.put("/customers/:id", async (req, res) =>{
+    const id = req.params.id;
+    const name = req.body.name;
+    const phone = parseInt(req.body.phone);
+    const cpf = parseInt(req.body.cpf);
+    const birthday = req.body.birthday;
+
+   try{
+        const isCpfUsed = await connection.query('SELECT cpf FROM customers WHERE cpf = $1', [cpf]);
+        if(isCpfUsed.rows.length !== 0){
+            return res.sendStatus(409);
+        }
+
+        if(name === ""){
+            return res.sendStatus(400);
+        }
+
+        // `cpf` deve ser uma string com 11 caracteres numéricos;
+        // `phone` deve ser uma string com 10 ou 11 caracteres numéricos; 
+        // `birthday` deve ser uma data válida;
+
+        await connection.query('INSERT INTO customers (name, phone, cpf, birthday) VALUES ($1, $2, $3, $4)', [name, phone, cpf, birthday]);
         res.sendStatus(201);
 
     } catch(err){
