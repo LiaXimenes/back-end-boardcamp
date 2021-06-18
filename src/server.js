@@ -48,12 +48,18 @@ server.post("/categories", async (req, res) =>{
 })
 
 server.get("/games", async (req, res) =>{
-
-    //  FAZER ROLE DE PARAMETRO NA QUERY STRING
+    const queryString = req.query.name;
+    console.log(queryString);
 
     try{
-        const games =  await connection.query('SELECT * FROM games');
-        res.send(games.rows);
+        if(queryString){
+            const games =  await connection.query(`SELECT * FROM games WHERE games.name iLIKE'${queryString}%'`);
+            res.send(games.rows);
+        } else {
+            const games =  await connection.query('SELECT * FROM games');
+            res.send(games.rows);
+        }
+        
     } catch(err){
         console.log(err);
     }
@@ -63,17 +69,25 @@ server.post("/games", async (req, res) =>{
     const {name, image, stockTotal, categoryId, pricePerDay} = req.body;
    
     try{
+        // const verify = await connection.query(`
+        //     SELECT games.name, categories.id AS "categoriesId"
+        //     FROM games
+        //     JOIN categories 
+        //     ON games."categoryId" = categories.id
+        // `)
+    
+
         const isNameUsed = await connection.query('SELECT name FROM games WHERE name = $1', [name]);
         if(isNameUsed.rows.length !== 0){
             return res.sendStatus(409);
         }
 
-        if(name === "" || stockTotal < 1 || pricePerDay < 1){
+        const isCategoryExistent = await connection.query('SELECT id FROM categories WHERE id = $1', [categoryId]);
+        if(isCategoryExistent.rows.length === 0){
             return res.sendStatus(400);
         }
 
-        const isCategoryExistent = await connection.query('SELECT id FROM categories WHERE id = $1', [categoryId]);
-        if(isCategoryExistent.rows.length === 0){
+        if(name === "" || stockTotal < 1 || pricePerDay < 1){
             return res.sendStatus(400);
         }
 
@@ -86,11 +100,18 @@ server.post("/games", async (req, res) =>{
 })
 
 server.get("/customers", async (req, res) =>{
-    //  FAZER ROLE DE PARAMETRO NA QUERY STRING
+    const queryString = req.query.cpf;
+    console.log(queryString);
 
     try{
-        const customers =  await connection.query('SELECT * FROM customers');
-        res.send(customers.rows);
+        if(queryString){
+            const customers =  await connection.query(`SELECT * FROM customers WHERE customers.cpf LIKE'${queryString}%'`);
+            res.send(customers.rows);
+        } else {
+            const customers =  await connection.query('SELECT * FROM customers');
+            res.send(customers.rows);
+        }
+
     } catch(err){
         console.log(err);
     }
@@ -119,7 +140,7 @@ server.post("/customers", async (req, res) =>{
 
     const schema = Joi.object({
         name: Joi.string().required(),
-        cpf: Joi.string().length(11).required(),
+        cpf: Joi.string().length(11).alphanum().required(),
         phone: Joi.string().min(10).max(11).required(),
         birthday: Joi.date().less('now').required(),
     })
@@ -146,14 +167,15 @@ server.post("/customers", async (req, res) =>{
 
 server.put("/customers/:id", async (req, res) =>{
     const id = req.params.id;
+
     const name = req.body.name;
     const phone = parseInt(req.body.phone);
     const cpf = parseInt(req.body.cpf);
     const birthday = req.body.birthday;
 
     const schema = Joi.object({
-        name: Joi.string().name().required(),
-        cpf: Joi.string().length(11).required(),
+        name: Joi.string().required(),
+        cpf: Joi.string().length(11).alphanum().required(),
         phone: Joi.string().min(10).max(11).required(),
         birthday: Joi.date().less('now').required(),
     })
@@ -162,14 +184,15 @@ server.put("/customers/:id", async (req, res) =>{
 
     if(!validation.error){
         try{
-            const isCpfUsed = await connection.query('SELECT cpf FROM customers WHERE cpf = $1', [cpf]);
-            if(isCpfUsed.rows.length !== 0){
+            const isCpfUsed = await connection.query('SELECT * FROM customers WHERE cpf = $1', [cpf]);
+            console.log(isCpfUsed.rows)
+            if(isCpfUsed.rows.length !== 0 && isCpfUsed.rows[0].id !== id){
                 return res.sendStatus(409);
             }
 
-            await connection.query('UPDATE customers (name, phone, cpf, birthday) VALUES ($1, $2, $3, $4)', [name, phone, cpf, birthday]);
+            await connection.query('UPDATE customers SET name = $1, phone = $2, cpf = $3, birthday = $4 WHERE id = $5', [name, phone, cpf, birthday, id]);
             res.sendStatus(200);
-
+      
         } catch(err){
             console.log(err);
         }
@@ -182,7 +205,15 @@ server.put("/customers/:id", async (req, res) =>{
 server.get("/rentals", async (req, res) =>{
 
     try{
-        const rentals =  await connection.query('SELECT * FROM rentals');
+        const rentals =  await connection.query(`
+            SELECT rentals.*, 
+            jsonb_build_object('name', customers.name, 'id', customers.id) AS customer,
+            jsonb_build_object('id', games.id, 'name', games.name, 'categoryId', games."categoryId", 'categoryName', categories.name) AS game            
+            FROM rentals 
+            JOIN customers ON rentals."customerId" = customers.id
+            JOIN games ON rentals."gameId" = games.id
+            JOIN categories ON categories.id = games."categoryId"
+        `);
         res.send(rentals.rows);
     } catch(err){
         console.log(err);
@@ -210,7 +241,7 @@ server.post("/rentals", async (req, res) =>{
 
     if(daysRented < 1 ){
         return res.sendStatus(400);
-    }
+    }  
 
     try{    
         await connection.query('INSERT INTO rentals ("customerId", "gameId", "daysRented", "rentDate", "originalPrice", "returnDate", "delayFee") VALUES ($1, $2, $3, $4, $5, $6, $7)', [customerId, gameId, daysRented, rentDate, originalPrice, returnDate, delayFee]);
@@ -223,20 +254,23 @@ server.post("/rentals", async (req, res) =>{
 
 server.post("/rentals/:id/return", async (req,res) =>{
     const id = req.params.id;
-    const returnDate = dayjs();
 
-    const isRentalExistent = await connection.query('SELECT id FROM rentals WHERE id = $1', [id]);
-    if(isRentalExistent.rows.length === 0){
+    const rental = await connection.query('SELECT * FROM rentals WHERE id = $1', [id]);
+    console.log(rental.rows)
+    if(rental.rows.length === 0){
         return res.sendStatus(404);
-    }
-
-    const paidRental = await connection.query('SELECT * FROM rentals WHERE id = $1', [id]);
-    if(paidRental.rows.returnDate !== null){
+    } else if(rental.rows[0].returnDate !== null){
         return res.sendStatus(400);
     }
 
+    const returnDate = dayjs();
+    const incialDate = (rental.rows[0].rentDate);
+    const pricePerDay = (rental.rows[0].originalPrice)/(rental.rows[0].daysRented);
+    const lateDays = Math.ceil((new Date(returnDate).getTime() - new Date(incialDate).getTime())/86400000);
+    const fee = (lateDays - 1)* pricePerDay;
+
     try{    
-        await connection.query(`UPDATE rentals SET "returnDate" = $1 WHERE id = $2`, [returnDate, id]);
+        await connection.query(`UPDATE rentals SET "returnDate" = $1, "delayFee" = $2 WHERE id = $3`, [returnDate, fee, id]);
         res.sendStatus(201);
 
     } catch(err){
@@ -253,7 +287,7 @@ server.delete("/rentals/:id", async (req, res) =>{
     }
 
     const paidRental = await connection.query('SELECT * FROM rentals WHERE id = $1', [id]);
-    if(paidRental.rows.returnDate == null){
+    if(paidRental.rows.returnDate === null){
         return res.sendStatus(400);
     }
 
